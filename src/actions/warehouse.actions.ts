@@ -2,6 +2,7 @@
  * ==============================================================================
  * FILE: src/actions/warehouse.actions.ts
  * PURPOSE: Server Actions for Warehouses and Inventory Locations.
+ *          Modifications are strictly restricted to Inventory Managers.
  * ==============================================================================
  */
 
@@ -14,14 +15,15 @@ import {
   WarehouseInput,
   LocationInput,
 } from "@/validators/warehouse.validators";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireAuth, requireManager } from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
 import { LocationType } from "@prisma/client";
 
 /**
- * Retrieves all warehouses with their child locations and total stock summary.
+ * Retrieves all warehouses with their child locations. Accessible by all authenticated users.
  */
 export async function getWarehouses() {
+  await requireAuth();
   return await db.warehouse.findMany({
     include: {
       locations: {
@@ -38,9 +40,10 @@ export async function getWarehouses() {
 }
 
 /**
- * Retrieves storage locations, optionally filtered by location type (e.g. INTERNAL).
+ * Retrieves storage locations. Accessible by all authenticated users.
  */
 export async function getLocations(type?: LocationType) {
+  await requireAuth();
   return await db.location.findMany({
     where: type ? { type } : undefined,
     include: {
@@ -53,11 +56,11 @@ export async function getLocations(type?: LocationType) {
 }
 
 /**
- * Creates a new physical warehouse facility.
+ * Creates a new physical warehouse facility. (Manager Exclusive)
  */
 export async function createWarehouse(data: WarehouseInput) {
   try {
-    await requireAuth();
+    await requireManager();
     const validated = warehouseSchema.parse(data);
 
     const existingCode = await db.warehouse.findUnique({
@@ -94,11 +97,11 @@ export async function createWarehouse(data: WarehouseInput) {
 }
 
 /**
- * Creates a new internal location (e.g. Rack, Shelf, Bin) under a warehouse.
+ * Creates a new internal location (e.g. Rack, Shelf, Bin) under a warehouse. (Manager Exclusive)
  */
 export async function createLocation(data: LocationInput) {
   try {
-    await requireAuth();
+    await requireManager();
     const validated = locationSchema.parse(data);
 
     const existingCode = await db.location.findUnique({

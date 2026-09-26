@@ -2,6 +2,7 @@
  * ==============================================================================
  * FILE: src/actions/product.actions.ts
  * PURPOSE: Server Actions for Product Catalog management and stock queries.
+ *          Product registration and deletion are restricted to Managers.
  * ==============================================================================
  */
 
@@ -9,7 +10,7 @@
 
 import { db } from "@/lib/db";
 import { productSchema, ProductInput } from "@/validators/product.validators";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireAuth, requireManager } from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
 
 interface GetProductsOptions {
@@ -24,6 +25,7 @@ interface GetProductsOptions {
  * Retrieves a paginated list of catalog products with current total stock calculation.
  */
 export async function getProducts(options: GetProductsOptions = {}) {
+  await requireAuth();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 15));
   const skip = (page - 1) * limit;
@@ -96,6 +98,7 @@ export async function getProducts(options: GetProductsOptions = {}) {
  * Lightweight helper to fetch active products for dropdown pickers.
  */
 export async function getProductsSimple() {
+  await requireAuth();
   return await db.product.findMany({
     select: {
       id: true,
@@ -111,6 +114,7 @@ export async function getProductsSimple() {
  * Retrieves a single product with full location breakdown and stock ledger history.
  */
 export async function getProductById(id: string) {
+  await requireAuth();
   const product = await db.product.findUnique({
     where: { id },
     include: {
@@ -148,11 +152,11 @@ export async function getProductById(id: string) {
 }
 
 /**
- * Creates a new product and optionally provisions initial stock at a designated location.
+ * Creates a new product and optionally provisions initial stock. (Manager Exclusive)
  */
 export async function createProduct(data: ProductInput) {
   try {
-    const user = await requireAuth();
+    const manager = await requireManager();
     const validated = productSchema.parse(data);
 
     const existingSku = await db.product.findUnique({
@@ -212,7 +216,7 @@ export async function createProduct(data: ProductInput) {
             destLocationId: validated.initialLocationId,
             quantity: validated.initialStock,
             moveType: "RECEIPT",
-            movedById: user.id,
+            movedById: manager.id,
           },
         });
       }
@@ -229,11 +233,11 @@ export async function createProduct(data: ProductInput) {
 }
 
 /**
- * Updates product details and reorder thresholds.
+ * Updates product details and reorder thresholds. (Manager Exclusive for safety thresholds)
  */
 export async function updateProduct(id: string, data: ProductInput) {
   try {
-    await requireAuth();
+    await requireManager();
     const validated = productSchema.parse(data);
 
     const existingSku = await db.product.findFirst({
@@ -270,11 +274,11 @@ export async function updateProduct(id: string, data: ProductInput) {
 }
 
 /**
- * Deletes a product if it has no completed moves or operations.
+ * Deletes a product if it has no completed moves or operations. (Manager Exclusive)
  */
 export async function deleteProduct(id: string) {
   try {
-    await requireAuth();
+    await requireManager();
     const movesCount = await db.stockMove.count({ where: { productId: id } });
     if (movesCount > 0) {
       return {

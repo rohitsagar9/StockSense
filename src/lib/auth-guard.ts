@@ -1,7 +1,8 @@
 /**
  * ==============================================================================
  * FILE: src/lib/auth-guard.ts
- * PURPOSE: Server-side authentication guard helper for server actions and pages.
+ * PURPOSE: Server-side authentication and authorization guards for Next.js.
+ *          Provides role-based access control (RBAC) helpers for Managers & Staff.
  * ==============================================================================
  */
 
@@ -16,7 +17,7 @@ export async function getSession() {
 }
 
 /**
- * Ensures the user is authenticated. Throws or returns user info.
+ * Ensures the user is authenticated. Throws if unauthenticated.
  */
 export async function requireAuth() {
   const session = await getSession();
@@ -29,4 +30,16 @@ export async function requireAuth() {
     email: string;
     role: "MANAGER" | "STAFF";
   };
+}
+
+/**
+ * Ensures the user is authenticated AND holds the MANAGER role.
+ * Throws 403 Forbidden error if user is a standard warehouse staff member.
+ */
+export async function requireManager() {
+  const user = await requireAuth();
+  if (user.role !== "MANAGER") {
+    throw new Error("Forbidden: This action requires Inventory Manager privileges.");
+  }
+  return user;
 }

@@ -2,6 +2,7 @@
  * ==============================================================================
  * FILE: src/actions/category.actions.ts
  * PURPOSE: Server Actions for Category CRUD management.
+ *          Modifications are strictly restricted to Inventory Managers.
  * ==============================================================================
  */
 
@@ -9,13 +10,14 @@
 
 import { db } from "@/lib/db";
 import { categorySchema, CategoryInput } from "@/validators/product.validators";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireAuth, requireManager } from "@/lib/auth-guard";
 import { revalidatePath } from "next/cache";
 
 /**
  * Retrieves all categories with their associated product counts.
  */
 export async function getCategories() {
+  await requireAuth();
   return await db.category.findMany({
     include: {
       _count: {
@@ -27,11 +29,11 @@ export async function getCategories() {
 }
 
 /**
- * Creates a new category.
+ * Creates a new category. (Manager Exclusive)
  */
 export async function createCategory(data: CategoryInput) {
   try {
-    await requireAuth();
+    await requireManager();
     const validated = categorySchema.parse(data);
 
     const existing = await db.category.findUnique({
@@ -58,11 +60,11 @@ export async function createCategory(data: CategoryInput) {
 }
 
 /**
- * Updates an existing category.
+ * Updates an existing category. (Manager Exclusive)
  */
 export async function updateCategory(id: string, data: CategoryInput) {
   try {
-    await requireAuth();
+    await requireManager();
     const validated = categorySchema.parse(data);
 
     const category = await db.category.update({
@@ -81,11 +83,11 @@ export async function updateCategory(id: string, data: CategoryInput) {
 }
 
 /**
- * Deletes a category if it contains no associated products.
+ * Deletes a category if it contains no associated products. (Manager Exclusive)
  */
 export async function deleteCategory(id: string) {
   try {
-    await requireAuth();
+    await requireManager();
     const count = await db.product.count({ where: { categoryId: id } });
     if (count > 0) {
       return {
