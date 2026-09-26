@@ -1,0 +1,254 @@
+// ==============================================================================
+// PRISMA SCHEMA FOR STOCKSENSE INVENTORY MANAGEMENT SYSTEM
+// ==============================================================================
+// This file defines the PostgreSQL database schema for StockSense.
+// It includes models for Users, Warehouses, Locations, Products,
+// Categories, Stock Levels, Operations (Receipts, Deliveries, Transfers, Adjustments),
+// Operation Line Items, and the Stock Move Ledger (Audit Trail).
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------------------------
+
+/// Roles for system users
+enum UserRole {
+  MANAGER // Can approve operations, manage settings, reorder rules
+  STAFF   // Warehouse staff performing daily stock operations
+}
+
+/// Types of locations in the inventory hierarchy
+enum LocationType {
+  INTERNAL       // Physical storage within company (shelves, racks, zones)
+  VENDOR         // Virtual partner location for incoming goods
+  CUSTOMER       // Virtual partner location for delivered goods
+  INVENTORY_LOSS // Virtual location for write-offs and scrap adjustments
+}
+
+/// Types of inventory operations
+enum OperationType {
+  RECEIPT    // Incoming stock from vendors
+  DELIVERY   // Outgoing stock to customers
+  TRANSFER   // Internal stock movement between company locations
+  ADJUSTMENT // Physical stock audit discrepancy adjustments
+}
+
+/// Lifecycle status for inventory operations
+enum OperationStatus {
+  DRAFT     // Initial creation / planning
+  WAITING   // Awaiting goods or warehouse availability
+  READY     // Verified and ready for stock movement
+  DONE      // Completed and stock ledger updated
+  CANCELLED // Aborted operation
+}
+
+// ------------------------------------------------------------------------------
+// AUTHENTICATION & USERS
+// ------------------------------------------------------------------------------
+
+/// System User accounts with role-based access and OTP recovery
+model User {
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  password   String // Bcrypt hashed password
+  role       UserRole  @default(STAFF)
+  otpCode    String? // Temporary hashed OTP for password reset
+  otpExpiry  DateTime? // Expiration timestamp for active OTP
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Relationships
+  operationsCreated Operation[]
+  stockMovesMoved   StockMove[]
+
+  @@map("users")
+}
+
+// ------------------------------------------------------------------------------
+// WAREHOUSES & LOCATIONS
+// ------------------------------------------------------------------------------
+
+/// Top-level physical warehouses / facilities
+model Warehouse {
+  id        String     @id @default(cuid())
+  name      String     @unique // e.g. "Main Warehouse", "North Facility"
+  code      String     @unique // e.g. "WH1", "WH-NORTH"
+  address   String?
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Child locations contained in this warehouse
+  locations Location[]
+
+  @@map("warehouses")
+}
+
+/// Sub-locations inside a warehouse (or virtual partner locations)
+model Location {
+  id          String       @id @default(cuid())
+  name        String // e.g. "Rack A", "Section B-12", "Production Floor"
+  code        String       @unique // e.g. "WH1/RACK-A"
+  type        LocationType @default(INTERNAL)
+  warehouseId String?
+  warehouse   Warehouse?   @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relationships
+  stockLevels       StockLevel[]
+  sourceOperations  Operation[]  @relation("SourceLocation")
+  destOperations    Operation[]  @relation("DestLocation")
+  sourceMoves       StockMove[]  @relation("SourceLocationMoves")
+  destMoves         StockMove[]  @relation("DestLocationMoves")
+
+  @@map("locations")
+}
+
+// ------------------------------------------------------------------------------
+// PRODUCTS & CATEGORIES
+// ------------------------------------------------------------------------------
+
+/// Product groupings (e.g. "Raw Materials", "Electronics", "Finished Goods")
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Products belonging to this category
+  products    Product[]
+
+  @@map("categories")
+}
+
+/// Catalog item tracked in inventory
+model Product {
+  id            String         @id @default(cuid())
+  name          String
+  sku           String         @unique // Stock Keeping Unit barcode / identifier
+  description   String?
+  categoryId    String
+  category      Category       @relation(fields: [categoryId], references: [id])
+  unitOfMeasure String         @default("Units") // Units, kg, Litres, Meters, etc.
+  reorderLevel  Int            @default(10) // Minimum threshold triggering low stock alert
+  reorderQty    Int            @default(50) // Recommended replenishment quantity
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relationships
+  stockLevels    StockLevel[]
+  operationLines OperationLine[]
+  stockMoves     StockMove[]
+
+  @@map("products")
+}
+
+/// Current on-hand quantity of a product at a specific location
+model StockLevel {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  quantity   Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  // A product can only have one stock count entry per specific location
+  @@unique([productId, locationId])
+  @@map("stock_levels")
+}
+
+// ------------------------------------------------------------------------------
+// INVENTORY OPERATIONS (Receipts, Deliveries, Transfers, Adjustments)
+// ------------------------------------------------------------------------------
+
+/// Transaction document tracking incoming, outgoing, or transfer tasks
+model Operation {
+  id               String          @id @default(cuid())
+  referenceNo      String          @unique // e.g. "IN-2026-001", "OUT-2026-001"
+  type             OperationType
+  status           OperationStatus @default(DRAFT)
+  
+  // Locations involved
+  sourceLocationId String?
+  sourceLocation   Location?       @relation("SourceLocation", fields: [sourceLocationId], references: [id])
+  destLocationId   String?
+  destLocation     Location?       @relation("DestLocation", fields: [destLocationId], references: [id])
+
+  // Contextual partner (Vendor for receipts, Customer for delivery)
+  partnerName      String?
+  notes            String?
+
+  // Personnel and Schedule
+  createdById      String?
+  createdBy        User?           @relation(fields: [createdById], references: [id])
+  scheduledDate    DateTime?
+  completedDate    DateTime?
+
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Line items
+  lines            OperationLine[]
+  stockMoves       StockMove[]
+
+  @@map("operations")
+}
+
+/// Line items specifying products and quantities for an Operation
+model OperationLine {
+  id          String    @id @default(cuid())
+  operationId String
+  operation   Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  demandQty   Int       @default(1) // Expected or requested quantity
+  doneQty     Int       @default(0) // Actual processed quantity
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  stockMoves  StockMove[]
+
+  @@map("operation_lines")
+}
+
+// ------------------------------------------------------------------------------
+// STOCK MOVE AUDIT LEDGER
+// ------------------------------------------------------------------------------
+
+/// Immutable audit record for every single stock relocation
+model StockMove {
+  id               String        @id @default(cuid())
+  operationId      String?
+  operation        Operation?    @relation(fields: [operationId], references: [id])
+  operationLineId  String?
+  operationLine    OperationLine? @relation(fields: [operationLineId], references: [id])
+  productId        String
+  product          Product       @relation(fields: [productId], references: [id])
+  
+  sourceLocationId String
+  sourceLocation   Location      @relation("SourceLocationMoves", fields: [sourceLocationId], references: [id])
+  destLocationId   String
+  destLocation     Location      @relation("DestLocationMoves", fields: [destLocationId], references: [id])
+
+  quantity         Int           // Absolute quantity moved
+  moveType         OperationType // RECEIPT, DELIVERY, TRANSFER, ADJUSTMENT
+  movedAt          DateTime      @default(now())
+  
+  movedById        String?
+  movedBy          User?         @relation(fields: [movedById], references: [id])
+
+  @@map("stock_moves")
+}
