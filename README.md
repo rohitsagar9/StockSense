@@ -1,141 +1,103 @@
-# 📦 StockSense — Modular Inventory Management System
+# StockSense — Inventory Management System
 
-**StockSense** is a centralized, real-time Inventory Management System (IMS) designed to replace manual registers, spreadsheets, and scattered tracking methods. Built with a full-stack architecture using **Next.js 14 (App Router)**, **PostgreSQL**, **Prisma ORM**, and **NextAuth.js**.
+StockSense is a full-stack Inventory Management System that replaces manual registers and spreadsheets with a centralized, real-time view of stock across multiple warehouses.
 
----
+Built with **Next.js 14 (App Router) · TypeScript · PostgreSQL · Prisma · NextAuth**.
 
-## 🌟 Key Features
-
-1. **Authentication & Profile**
-   - User Registration & Login with Role-Based Access (`MANAGER`, `STAFF`).
-   - OTP-based password recovery flow with email delivery or simulated dev console preview.
-   - User profile settings with name and password updating.
-
-2. **Dashboard & KPIs**
-   - Snapshot of real-time inventory metrics:
-     - Total Products in Stock
-     - Low Stock / Out of Stock alerts with threshold indicators
-     - Pending Receipts count
-     - Pending Deliveries count
-     - Scheduled Internal Transfers count
-   - **Dynamic multi-attribute filters**: Filter operations by Document Type (*Receipt, Delivery, Transfer, Adjustment*), Status (*Draft, Waiting, Ready, Done, Cancelled*), Warehouse, and Category.
-   - Interactive stock level vs. safety reorder threshold chart (Recharts).
-
-3. **Products Catalog**
-   - Catalog management (Name, SKU, Category, Unit of Measure, Description).
-   - **Reordering Rules**: Configurable minimum safety stock threshold and replenishment quantities.
-   - **Stock availability per location**: Breakdown table showing quantities on-hand across all warehouses, shelves, and racks.
-   - Dynamic product category management.
-
-4. **Core Operations**
-   - **Receipts (Incoming Stock)**: Receive goods from suppliers $\rightarrow$ validate $\rightarrow$ automatically increments destination stock.
-   - **Delivery Orders (Outgoing Stock)**: Dispatch customer shipments $\rightarrow$ validates on-hand availability $\rightarrow$ deducts stock.
-   - **Internal Transfers**: Relocate goods inside the company (*Main Warehouse $\rightarrow$ Production Floor*, *Rack A $\rightarrow$ Rack B*) without changing company net total stock.
-   - **Stock Adjustments**: Reconcile physical count audits with recorded system quantities, computing deltas automatically.
-
-5. **Stock Ledger (Move History)**
-   - Complete, immutable audit log of every stock relocation, receipt, delivery, and adjustment across the entire business.
-
-6. **Warehouses & Locations**
-   - Multi-warehouse support with nested sub-locations (Racks, Zones, Shelves, Bays).
+**Repository:** https://github.com/rohitsagar9/StockSense
 
 ---
 
-## 🏗️ Architecture & Code Organization
+## Features
 
-```
-d:/odoo hyd/
-├── prisma/
-│   ├── schema.prisma        # 9 PostgreSQL relational models with Prisma ORM
-│   └── seed.js              # Comprehensive demo dataset (users, warehouses, items)
-│
-├── src/
-│   ├── app/                 # Next.js 14 App Router routes & pages
-│   │   ├── (auth)/          # Login, Sign Up, OTP Forgot Password
-│   │   ├── (dashboard)/     # Authenticated layout, Dashboard, Products, Operations
-│   │   └── api/auth/        # NextAuth session handlers
-│   │
-│   ├── actions/             # Server Actions (Atomic transactional backend logic)
-│   │   ├── auth.actions.ts
-│   │   ├── product.actions.ts
-│   │   ├── category.actions.ts
-│   │   ├── operation.actions.ts
-│   │   ├── warehouse.actions.ts
-│   │   ├── dashboard.actions.ts
-│   │   └── move-history.actions.ts
-│   │
-│   ├── components/          # Reusable frontend UI components
-│   │   ├── ui/              # Buttons, Cards, Inputs, Tables, Badges
-│   │   ├── layout/          # Left Sidebar, Header, Breadcrumbs
-│   │   ├── dashboard/       # KPI Grid, Stock Chart, Filter Bar, Activity Feed
-│   │   ├── products/        # Product Form, Stock by Location Table
-│   │   ├── operations/      # Line Items Editor, Receipt/Delivery/Transfer forms
-│   │   └── move-history/    # Move Table Ledger
-│   │
-│   ├── lib/                 # Backend utilities & singletons
-│   │   ├── db.ts            # Prisma Client singleton
-│   │   ├── auth.ts          # NextAuth configuration
-│   │   ├── auth-guard.ts    # Server-side auth check
-│   │   ├── otp.ts           # 6-digit OTP generation and bcrypt check
-│   │   └── email.ts         # Nodemailer OTP email service
-│   │
-│   └── validators/          # Zod input schemas for validation
-```
+- **Authentication** — Signup/login with NextAuth sessions, OTP-based password reset (email via Nodemailer, or console output in dev).
+- **Role-based access** — `MANAGER` and `STAFF` roles; mutations are guarded server-side via `requireAuth()` / `requireManager()` (`src/lib/auth-guard.ts`). Staff cannot create or delete products, warehouses, or categories.
+- **Dashboard** — KPIs for stock levels, low/out-of-stock alerts, pending receipts/deliveries/transfers; filters by operation type, status, warehouse, and category; stock vs. reorder-threshold chart (Recharts).
+- **Product catalog** — SKU, category, unit of measure, reorder rules, and per-location stock breakdown.
+- **Core operations** (all transactional via Server Actions):
+  - **Receipts** — incoming stock increments the destination location.
+  - **Deliveries** — outgoing stock is validated against on-hand quantity, then deducted.
+  - **Internal transfers** — move stock between locations/warehouses; company net total stays unchanged.
+  - **Adjustments** — reconcile physical counts with system quantities; deltas recorded automatically.
+- **Stock ledger** — immutable move history: every receipt, delivery, transfer, and adjustment logged with user, timestamp, and locations.
+- **Warehouses & locations** — multi-warehouse support with nested locations (racks, shelves, zones).
 
----
+## Tech stack
 
-## 🚀 Getting Started & Execution Guide
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 14 App Router + Server Actions |
+| Language | TypeScript |
+| Database | PostgreSQL + Prisma ORM |
+| Auth | NextAuth.js (credentials), bcrypt, OTP reset |
+| Validation | Zod |
+| Styling | Tailwind CSS |
+| Charts | Recharts |
 
-Follow these commands in your PowerShell terminal to launch StockSense:
+## Getting started
 
-### 1. Install Dependencies
-```powershell
+Prerequisites: Node.js 18+, PostgreSQL running locally.
+
+```bash
+# 1. Install dependencies (Prisma client is generated automatically via postinstall)
 npm install
-```
 
-### 2. Configure Database Connection
-Ensure PostgreSQL is running on your machine. Inspect `.env` and verify your connection string:
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/stocksense_db?schema=public"
-NEXTAUTH_SECRET="stocksense_super_secret_jwt_key_2026_change_in_production"
-NEXTAUTH_URL="http://localhost:3000"
-```
-*(Replace `postgres:postgres` with your PostgreSQL username and password).*
+# 2. Configure .env — copy .env.example and set your credentials
+#    DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/stocksense_db?schema=public"
+#    NEXTAUTH_SECRET="<random string>"
 
-### 3. Generate Prisma Client & Run Migrations
-```powershell
+# 3. Create the database schema
 npx prisma migrate dev --name init
-```
 
-### 4. Seed Database with Initial Data
-Run the seeder to populate sample users, warehouses, products, and operations:
-```powershell
+# 4. Seed demo users, warehouses, products, and operations
 npm run prisma:seed
-```
 
-### 5. Start the Development Server
-```powershell
+# 5. Start the dev server
 npm run dev
 ```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser!
 
----
+Open http://localhost:3000.
 
-## 🔑 Default Login Credentials
+## Default credentials
 
 | Role | Email | Password |
 |---|---|---|
-| **Inventory Manager** | `manager@stocksense.com` | `admin123` |
-| **Warehouse Staff** | `staff@stocksense.com` | `staff123` |
+| Manager | `manager@stocksense.com` | `admin123` |
+| Staff | `staff@stocksense.com` | `staff123` |
 
-*(Quick 1-click fill buttons are also available on the Login screen).*
+## Inventory flow walkthrough
 
----
+1. **Receipt** — Operations → Receipts → New: receive 100 kg steel rods → stock increases by 100.
+2. **Transfer** — Operations → Internal Transfers → New: Main Warehouse → Production Rack, 20 kg → location changes, net total unchanged.
+3. **Delivery** — Operations → Deliveries → New: dispatch 6 units → stock decreases after availability check.
+4. **Adjustment** — Operations → Adjustments → New: count 77 kg vs. recorded 80 kg → system updates and logs the -3 delta.
+5. **Audit** — Move History shows every step with timestamp, user, source, destination, and reference number.
 
-## 🔄 Inventory Flow Example
+## Project structure
 
-1. **Step 1 — Inward Goods**: Go to **Operations $\rightarrow$ Receipts $\rightarrow$ Create New Receipt**. Add supplier "Apex Steel", select receiving location "Main Central Warehouse Stock", and set 100 kg Steel Rods. Click **Validate** $\rightarrow$ Stock increases by +100 kg.
-2. **Step 2 — Internal Relocation**: Go to **Operations $\rightarrow$ Internal Transfers $\rightarrow$ Create Transfer**. Select source "Main Central Warehouse Stock" and target "Production Floor Rack". Move 20 kg. Click **Validate** $\rightarrow$ Stock is relocated; company net total remains unchanged.
-3. **Step 3 — Customer Delivery**: Go to **Operations $\rightarrow$ Deliveries $\rightarrow$ Create Delivery Order**. Add customer "Acme Workspace", dispatch from "Main Central Warehouse Stock", deliver 6 Chairs. Click **Validate** $\rightarrow$ Stock decreases automatically.
-4. **Step 4 — Physical Audit Adjustment**: Go to **Operations $\rightarrow$ Stock Adjustments $\rightarrow$ New Adjustment**. Select "Steel Rods 10mm" and adjust to 77 kg (e.g. 3 kg damaged). Click **Apply** $\rightarrow$ System updates on-hand stock and logs delta into the **Stock Ledger**.
-5. **Step 5 — Audit Ledger**: Check **Move History** $\rightarrow$ Every step is logged with timestamp, user, source, destination, and reference number!
+```
+prisma/
+  schema.prisma        # 9 models + enums (User, Warehouse, Location, Category,
+                       #   Product, StockLevel, Operation, OperationLine, StockMove)
+  seed.js              # Demo dataset
+src/
+  app/                 # App Router pages
+    (auth)/            # Login, signup, forgot-password
+    (dashboard)/       # Dashboard, products, operations, move-history, settings, profile
+    api/auth/          # NextAuth route handler
+  actions/             # Server Actions (transactional mutations + queries)
+  components/          # ui/ · layout/ · dashboard/ · operations/ · products/
+  lib/                 # db (Prisma singleton) · auth · auth-guard · otp · email
+  validators/          # Zod schemas
+```
+
+## Scripts
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run prisma:migrate` | Create/apply migrations |
+| `npm run prisma:seed` | Seed demo data |
+| `npm run prisma:studio` | Prisma Studio (browse data) |
